@@ -22,10 +22,25 @@ def main():
     insert_initial_values(cursor)
     connection.commit()
 
+    print_values_in_db(cursor, 'Antes do Log REDO')
+
     log_redo(cursor)
     connection.commit()
 
+    print_values_in_db(cursor, '\nDepois do Log REDO')
+
     connection.close()
+
+
+def print_values_in_db(cursor, initial_message):
+    cursor.execute("""
+        SELECT A, B FROM TP2; 
+    """)
+    print(initial_message)
+    print('(A, B)')
+    for row in cursor.fetchall():
+        print(f'{row}')
+    print()
 
 
 def get_values():
@@ -63,8 +78,27 @@ def start_transaction(new_values, line):
     new_values[line.split(' ')[-1]] = dict()
 
 
-def commit_transaction(new_values, line):
-    new_values[line.split(' ')[-1]] =
+def is_in_db(column, id, value, cursor):
+    cursor.execute("""
+        SELECT %s FROM TP2 WHERE ID = %s
+    """ % (column, id))
+
+    if value in cursor.fetchone():
+        return True
+    return False
+
+
+def update_value_in_db(column, id, value, cursor):
+    cursor.execute("""
+        UPDATE TP2 SET %s=%s WHERE ID = %s
+    """ % (column, str(value), id))
+
+
+def recommit_transaction(new_values, line, cursor):
+    for column, row_value in new_values[get_transaction_from_commit(line)].items():
+        for row, value in row_value.items():
+            if is_in_db(column, row, value, cursor) is False:
+                update_value_in_db(column, row, value, cursor)
 
 
 def clear_ckpt(ckpt_line):
@@ -86,6 +120,10 @@ def get_transaction(line):
     return line.split(',')[0]
 
 
+def get_transaction_from_commit(line):
+    return line.split(' ')[1]
+
+
 def transaction_change_info(line):
     from collections import namedtuple
 
@@ -100,18 +138,14 @@ def key_exists(new_values, key):
     return False
 
 
-def save_row(new_values_transaction_column, row):
-    if key_exists(new_values_transaction_column, row) is False:
-        new_values_transaction_column[row] = None
-
-
 def save_column(new_values_transaction, column):
     if key_exists(new_values_transaction, column) is False:
         new_values_transaction[column] = dict()
 
 
-def save_value(new_values_transaction_column_row, value):
-    new_values_transaction_column_row = value
+def save_row(new_values_transaction_column, row):
+    if key_exists(new_values_transaction_column, row) is False:
+        new_values_transaction_column[row] = None
 
 
 def annotate_transaction_change(new_values, line):
@@ -120,25 +154,35 @@ def annotate_transaction_change(new_values, line):
 
     save_column(new_values[transaction], change_info.column)
     save_row(new_values[transaction][change_info.column], change_info.row)
-    save_value(new_values[transaction][change_info.column][change_info.row], change_info.value)
+    new_values[transaction][change_info.column][change_info.row] = change_info.value
 
 
 def log_redo(cursor):
     lines = clear_lines(read_log_file())
     new_values = dict()
     not_checkpointed = checkpointed_transactions(lines)
+    didnt_redo = set()
 
     for line in lines:
         if line.startswith('start'):
             start_transaction(new_values, line)
+
         elif line.startswith('T'):
             if get_transaction(line) in not_checkpointed:
                 annotate_transaction_change(new_values, line)
+                didnt_redo.add(get_transaction(line))
+
         elif line.startswith('commit'):
-            if get_transaction(line) in not_checkpointed:
-                commit_transaction(new_values, line)
+            transaction = get_transaction_from_commit(line)
+
+            if transaction in not_checkpointed:
+                recommit_transaction(new_values, line, cursor)
+                print(f'Transação {transaction} realizou REDO!')
+                didnt_redo.remove(transaction)
+
         elif line.startswith('crash'):
-            break
+            for transaction in didnt_redo:
+                print(f'Transação {transaction} não realizou REDO!')
 
 
 if __name__ == '__main__':
