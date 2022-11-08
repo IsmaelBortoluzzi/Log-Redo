@@ -3,7 +3,7 @@ import json
 
 
 def main():
-    connection = sqlite3.connect('log_redo.db')
+    connection = sqlite3.connect('database/log_redo.db')
     cursor = connection.cursor()
 
     cursor.execute("""
@@ -44,7 +44,7 @@ def print_values_in_db(cursor, initial_message):
 
 
 def get_values():
-    with open('./metadado.json', 'r') as file:
+    with open('text_files/metadado.json', 'r') as file:
         json_string = ''.join([line for line in file])
     return json.loads(json_string)
 
@@ -65,7 +65,7 @@ def insert_initial_values(cursor):
 
 
 def read_log_file():
-    with open('./entradaLog', 'r') as file:
+    with open('text_files/entradaLog', 'r') as file:
         lines = [line for line in file]
     return lines
 
