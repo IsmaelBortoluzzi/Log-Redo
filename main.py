@@ -75,7 +75,7 @@ def clear_lines(lines):
 
 
 def start_transaction(new_values, line):
-    new_values[line.split(' ')[-1]] = dict()
+    new_values[get_transaction_from_start_or_commit(line)] = dict()
 
 
 def is_in_db(column, id, value, cursor):
