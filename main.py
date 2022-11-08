@@ -3,7 +3,7 @@ import json
 
 
 def main():
-    connection = sqlite3.connect('database/log_redo.db')
+    connection = sqlite3.connect('log_redo.db')
     cursor = connection.cursor()
 
     cursor.execute("""
