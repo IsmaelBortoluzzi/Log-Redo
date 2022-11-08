@@ -95,33 +95,49 @@ def update_value_in_db(column, id, value, cursor):
 
 
 def recommit_transaction(new_values, line, cursor):
-    for column, row_value in new_values[get_transaction_from_commit(line)].items():
+    for column, row_value in new_values[get_transaction_from_start_or_commit(line)].items():
         for row, value in row_value.items():
             if is_in_db(column, row, value, cursor) is False:
                 update_value_in_db(column, row, value, cursor)
 
 
 def clear_ckpt(ckpt_line):
-    return ckpt_line.replace(')', '').split('(')[1].replace(' ', '').split(',')
+    try:
+        return ckpt_line.replace(')', '').split('(')[1].replace(' ', '').split(',')
+    except IndexError:
+        return list()  # CKPT is empty (<CKPT>)
+
+
+def get_transaction_from_start_or_commit(line):
+    return line.split(' ')[-1]
+
+
+def get_all_transactions(lines):
+    return list(map(get_transaction_from_start_or_commit, filter(lambda line: line.startswith('start'), lines)))
+
+
+def assure_ckpt_if_empty(transactions_not_checkpointed, lines, index):
+    transactions_not_checkpointed.update(set(get_all_transactions(lines[index:-1])))  # get all the transactions open after CKPT
+    return transactions_not_checkpointed
 
 
 def checkpointed_transactions(lines):
-    transactions_to_ignore = set()
+    transactions_to_work = set()
+    no_ckpt = True
 
-    for line in lines:
+    for index, line in enumerate(lines):
         if line.startswith('CKPT'):
-            transactions_not_checkpointed = clear_ckpt(line)
-            transactions_to_ignore.update(set(transactions_not_checkpointed))
-    
-    return transactions_to_ignore
+            transactions_to_work = assure_ckpt_if_empty(set(clear_ckpt(line)), lines, index)
+            no_ckpt = False
+
+    if no_ckpt is True:
+        transactions_to_work = get_all_transactions(lines)
+
+    return transactions_to_work
 
 
 def get_transaction(line):
     return line.split(',')[0]
-
-
-def get_transaction_from_commit(line):
-    return line.split(' ')[1]
 
 
 def transaction_change_info(line):
@@ -173,7 +189,7 @@ def log_redo(cursor):
                 didnt_redo.add(get_transaction(line))
 
         elif line.startswith('commit'):
-            transaction = get_transaction_from_commit(line)
+            transaction = get_transaction_from_start_or_commit(line)
 
             if transaction in not_checkpointed:
                 recommit_transaction(new_values, line, cursor)
@@ -181,8 +197,10 @@ def log_redo(cursor):
                 didnt_redo.remove(transaction)
 
         elif line.startswith('crash'):
-            for transaction in didnt_redo:
-                print(f'Transação {transaction} não realizou REDO!')
+            break
+
+    for transaction in didnt_redo:
+        print(f'Transação {transaction} não realizou REDO!')
 
 
 if __name__ == '__main__':
