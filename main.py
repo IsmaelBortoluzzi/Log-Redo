@@ -66,7 +66,7 @@ def insert_initial_values(cursor):
 
 def read_log_file():
     with open('text_files/entradaLog', 'r') as file:
-        lines = [line for line in file]
+        lines = list(filter(lambda line: line != '\n', file))
     return lines
 
 
@@ -102,6 +102,9 @@ def recommit_transaction(new_values, line, cursor):
 
 
 def clear_ckpt(ckpt_line):
+
+    if '()' in ckpt_line:
+        return list()
     try:
         return ckpt_line.replace(')', '').split('(')[1].replace(' ', '').split(',')
     except IndexError:
@@ -116,24 +119,62 @@ def get_all_transactions(lines):
     return list(map(get_transaction_from_start_or_commit, filter(lambda line: line.startswith('start'), lines)))
 
 
-def assure_ckpt_if_empty(transactions_not_checkpointed, lines, index):
-    transactions_not_checkpointed.update(set(get_all_transactions(lines[index:-1])))  # get all the transactions open after CKPT
-    return transactions_not_checkpointed
+def get_starts_after_empty_ckpt(transactions_in_ckpt, lines):
+    all_transactions_to_work = set()
+    lines_reversed = reversed(lines)
+    index = len(lines) - 1
+
+    for line in lines_reversed:
+        if line.startswith('CKPT'):
+            break
+
+        if line.startswith('start'):
+            transaction = get_transaction_from_start_or_commit(line)
+            all_transactions_to_work.add(transaction)
+            if transaction in transactions_in_ckpt:
+                transactions_in_ckpt.remove(transaction)
+
+        index -= 1
+
+    return all_transactions_to_work, index + 1
+
+
+def get_earliest_start(transactions_in_ckpt, lines):
+    all_transactions_to_work = set()
+    lines_reversed = reversed(lines)
+    index = len(lines) - 1
+
+    for line in lines_reversed:
+        if len(transactions_in_ckpt) == 0:
+            break
+
+        if line.startswith('start'):
+            transaction = get_transaction_from_start_or_commit(line)
+            all_transactions_to_work.add(transaction)
+            if transaction in transactions_in_ckpt:
+                transactions_in_ckpt.remove(transaction)
+
+        index -= 1
+
+    return all_transactions_to_work, index + 1
 
 
 def checkpointed_transactions(lines):
-    transactions_to_work = set()
-    no_ckpt = True
+    lines_reversed = reversed(lines)
 
-    for index, line in enumerate(lines):
+    for line in lines_reversed:
         if line.startswith('CKPT'):
-            transactions_to_work = assure_ckpt_if_empty(set(clear_ckpt(line)), lines, index)
-            no_ckpt = False
+            ckpt_transactions = clear_ckpt(line)
+            if len(ckpt_transactions) == 0:
+                transactions_in_ckpt, index = get_starts_after_empty_ckpt(ckpt_transactions, lines)
+            else:
+                transactions_in_ckpt, index = get_earliest_start(ckpt_transactions, lines)
+            break
+    else:
+        transactions_in_ckpt = get_all_transactions(lines)
+        index = 0
 
-    if no_ckpt is True:
-        transactions_to_work = get_all_transactions(lines)
-
-    return transactions_to_work
+    return transactions_in_ckpt, index
 
 
 def get_transaction(line):
@@ -176,12 +217,15 @@ def annotate_transaction_change(new_values, line):
 def log_redo(cursor):
     lines = clear_lines(read_log_file())
     new_values = dict()
-    not_checkpointed = checkpointed_transactions(lines)
+    not_checkpointed, index = checkpointed_transactions(lines)
     didnt_redo = set()
 
-    for line in lines:
+    while index < len(lines):
+        line = lines[index]
+
         if line.startswith('start'):
-            start_transaction(new_values, line)
+            if get_transaction_from_start_or_commit(line) in not_checkpointed:
+                start_transaction(new_values, line)
 
         elif line.startswith('T'):
             if get_transaction(line) in not_checkpointed:
@@ -198,6 +242,8 @@ def log_redo(cursor):
 
         elif line.startswith('crash'):
             break
+
+        index += 1
 
     for transaction in didnt_redo:
         print(f'Transação {transaction} não realizou REDO!')
