@@ -119,7 +119,7 @@ def get_all_transactions(lines):
     return list(map(get_transaction_from_start_or_commit, filter(lambda line: line.startswith('start'), lines)))
 
 
-def get_starts_after_empty_ckpt(transactions_in_ckpt, lines):
+def get_starts_after_empty_ckpt(lines):
     all_transactions_to_work = set()
     lines_reversed = reversed(lines)
     index = len(lines) - 1
@@ -131,8 +131,6 @@ def get_starts_after_empty_ckpt(transactions_in_ckpt, lines):
         if line.startswith('start'):
             transaction = get_transaction_from_start_or_commit(line)
             all_transactions_to_work.add(transaction)
-            if transaction in transactions_in_ckpt:
-                transactions_in_ckpt.remove(transaction)
 
         index -= 1
 
@@ -166,7 +164,7 @@ def checkpointed_transactions(lines):
         if line.startswith('CKPT'):
             ckpt_transactions = clear_ckpt(line)
             if len(ckpt_transactions) == 0:
-                transactions_in_ckpt, index = get_starts_after_empty_ckpt(ckpt_transactions, lines)
+                transactions_in_ckpt, index = get_starts_after_empty_ckpt(lines)
             else:
                 transactions_in_ckpt, index = get_earliest_start(ckpt_transactions, lines)
             break
