@@ -55,13 +55,13 @@ def get_initial_values():
 
 def insert_initial_values(cursor):
     initial_values = get_initial_values()
-    values = (initial_values['A'][0], initial_values['A'][1], initial_values['B'][0], initial_values['B'][1])
-    cursor.execute("""
-        INSERT INTO TP2 (A, B)
+    values = [(initial_values['A'].pop(0), initial_values['B'].pop(0)) for x in range(len(initial_values['A']))]
+    query = f"""
+        INSERT INTO TP2 (A, B) 
         VALUES 
-            (%d, %d),
-            (%d, %d);
-    """ % values)
+            {str(values)[1:-1]};
+    """
+    cursor.execute(query)
 
 
 def read_log_file():
